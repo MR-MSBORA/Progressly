@@ -1,8 +1,10 @@
 import express from 'express'
 import dotenv from 'dotenv'
 import cors from "cors"
+import mongoose from 'mongoose'  // ⬅️ ADD THIS
+import authRoutes from './routes/auth.routes.js'
 
-// Load environment variables
+// Load environment variables FIRST
 dotenv.config();
 
 // Initialize express app
@@ -15,6 +17,26 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ⬇️ ADD: MongoDB Connection Function
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error('❌ MongoDB Connection Failed:', error.message);
+    console.error('💡 Troubleshooting:');
+    console.error('   1. Check if MONGODB_URI is set in .env file');
+    console.error('   2. If using local MongoDB, make sure it is running');
+    console.error('   3. If using Atlas, check IP whitelist and credentials');
+    process.exit(1);
+  }
+};
+
+// ⬇️ CALL the connection function
+connectDB();
 
 // Test route
 app.get('/', (req, res) => {
@@ -33,7 +55,10 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// 404 handler
+// AUTH ROUTES
+app.use('/api/auth', authRoutes);
+
+// 404 handler (should be after all routes)
 app.use((req, res) => {
   res.status(404).json({ 
     message: 'Route not found',

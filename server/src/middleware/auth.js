@@ -1,42 +1,48 @@
-import jwt from "jsonwebtoken"
-import User from "../../src/models/user.models"
+import jwt from "jsonwebtoken";
+import User from "../../src/models/user.models.js";
 
-export const protect = async (req, res, next) => {
-    let token
+const protect = async (req, res, next) => {
+  let token;
 
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer') // JWT standard format: Bearer <token>
-    ) {
-        token = req.headers.authorization.split[' '](1); // Extract token from "Bearer TOKEN"
+  // 1️⃣ Check Authorization header
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer ")
+  ) {
+    // 2️⃣ Extract token
+    token = req.headers.authorization.split(" ")[1];
+  }
+
+  // 3️⃣ No token
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Not authorized. Please login.",
+    });
+  }
+
+  try {
+    // 4️⃣ Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // 5️⃣ Find user
+    req.user = await User.findById(decoded.userId).select("-password");
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Please login again.",
+      });
     }
 
-    if (!token) {
-        return res.status(401).json({
-            success: false,
-            message: " Not authorized to access this route. Please login."
-        })
-    }
-
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);  // Verify token - jwt.verify() validates the JWT using the secret key and decodes the payload. If the token is invalid or expired, it throws an error.
-        req.user = await User.findById(decoded.id)  // Find user by id from token payload
-        // using req.user  as Attaching to req is the only way to pass info from middleware to route handlers in Express.
-        if (!req.user) {
-            return res.status(401).json({
-                success: false,
-                message: 'User not found. Please login again.'
-            })
-        }
-        next();
-
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: 'Not authorized to access this route. Token invalid or expired.'
-        });
-
-    }
-
-
+    // 6️⃣ Continue
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Token invalid or expired.",
+    });
+  }
 };
+
+export default protect;
