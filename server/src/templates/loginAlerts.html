@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #f59e0b; color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+    .alert-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; }
+    .success-box { background: #d1fae5; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; }
+    .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔐 {{status}} Login Attempt</h1>
+    </div>
+    <div class="content">
+      <h2>Hi {{name}},</h2>
+      
+      {{#if success}}
+      <div class="success-box">
+        <strong>✅ Successful Login</strong>
+        <p>Your account was accessed successfully.</p>
+      </div>
+      {{else}}
+      <div class="alert-box">
+        <strong>⚠️ Failed Login Attempt</strong>
+        <p>Someone tried to access your account with incorrect credentials.</p>
+      </div>
+      {{/if}}
+      
+      <p><strong>Details:</strong></p>
+      <ul>
+        <li>Time: {{time}}</li>
+        <li>Location: {{location}}</li>
+        <li>IP Address: {{ip}}</li>
+      </ul>
+      
+      {{#unless success}}
+      <p>If this wasn't you, we recommend changing your password immediately.</p>
+      <a href="{{resetUrl}}" style="display: inline-block; padding: 12px 30px; background: #ef4444; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px;">Change Password</a>
+      {{/unless}}
+      
+      <p>Stay secure!<br>The ProgressTrack Team</p>
+    </div>
+    <div class="footer">
+      <p>© 2026 ProgressTrack. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,268 +1,341 @@
-import User from "../models/user.models"
-import jwt from "jsonwebtoken"
+// ================= IMPORTS =================
 
-// ****GENERATE_TOKEN FUNCTION*******
-// Creates a signed JWT token containing the user's ID.
-//It creates an ID card that is valid for the next 7 days whenever a user logs in or signs up.
-//This new ID card (token) helps the server recognize the user and allow access to their data whenever they use the web app.
-//The server identifies the user in the database using the unique ID stored in the token.
+// Email utility for sending emails
+import sendEmail from '../utils/sendEmail.js';
 
-const generateToken = (id) => {
-  return jwt.sign(
-    { id },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
-  )
+// Node core modules
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+
+// User model
+import User from '../models/User.js';
+
+// JWT token generator (assumed to exist)
+import generateToken from '../utils/generateToken.js';
+
+// Resolve __dirname equivalent in ES modules
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+// ================= HELPER: LOAD EMAIL TEMPLATE =================
+//
+// Reads an HTML email template from /templates
+// Replaces {{variables}} with real values
+//
+const loadTemplate = (templateName, variables) => {
+  const templatePath = path.join(
+    __dirname,
+    '../templates',
+    `${templateName}.html`
+  );
+
+  // Read HTML file as string
+  let template = fs.readFileSync(templatePath, 'utf-8');
+
+  // Replace placeholders like {{name}}, {{resetUrl}}, etc.
+  Object.keys(variables).forEach(key => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    template = template.replace(regex, variables[key]);
+  });
+
+  return template;
 };
 
-// *******REGISTER FUNCTION************
-//Frontend sends data → name, email, password via req.body.
-//Server checks for missing fields → prevents incomplete data from being saved.
-//Email uniqueness check → stops registration if email already exists → avoids duplicates.
-//Create new user → saves user in database if all checks pass.
-//Password hashing → password is encrypted automatically before saving → real password never stored.
-//Generate JWT token → generateToken(user._id) creates a secure token for the user.
-//Send response to frontend → returns token + basic user info.
-//Immediate login → user is logged in right after registration without needing separate login.
 
+// ================= REGISTER USER =================
+//
+// Creates new user
+// Sends welcome email
+// Sends alert if email already exists
+//
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    if (!name) {
+    // Validate input
+    if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide NAME'
-      })
-    }
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide EMAIL'
-      })
+        message: 'Please provide name, email and password'
+      });
     }
 
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide PASSWORD'
-      })
-    }
+    // Check if user already exists
+    const userExists = await User.findOne({ email });
 
+    if (userExists) {
 
-    const userExist = await User.findOne({ email });
+      // Notify user about failed registration attempt
+      if (userExists.emailNotifications) {
+        const html = loadTemplate('loginAlert', {
+          name: userExists.name,
+          status: 'Failed',
+          success: false,
+          time: new Date().toLocaleString(),
+          location: 'Unknown',
+          ip: req.ip || 'Unknown',
+          resetUrl: `${process.env.CLIENT_URL}/forgot-password`
+        });
 
-    if (userExist) {
+        await sendEmail({
+          email: userExists.email,
+          subject: '⚠️ Failed Registration Attempt',
+          html
+        });
+      }
+
       return res.status(400).json({
         success: false,
         message: 'User with this email already exists'
-      })
+      });
     }
 
+    // Create new user
     const user = await User.create({ name, email, password });
 
+    // Generate JWT
     const token = generateToken(user._id);
 
-    return res.status(201).json({
+    // Send welcome email
+    const html = loadTemplate('welcome', {
+      name: user.name,
+      dashboardUrl: `${process.env.CLIENT_URL}/dashboard`
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: '🎉 Welcome to ProgressTrack!',
+      html
+    });
+
+    res.status(201).json({
       success: true,
       message: 'User registered successfully',
       token,
-      user: { id: user._id, name: user.name, email: user.email }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      }
     });
+
   } catch (error) {
     console.error('Register Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error during registration',
-      error: error.message
+      message: 'Server error during registration'
     });
-
   }
+};
 
-}
 
-// ******LOGIN FUNCTION AUTHENTICATION***********
-// Read email & password from request
-//Find user by email
-//Compare entered password with hashed password
-//If invalid → return “Invalid credentials”
-//If valid → generate JWT token
-//Send token to frontend for future requests
-
+// ================= LOGIN USER =================
+//
+// Authenticates user
+// Sends login success/failure alerts
+//
 export const login = async (req, res) => {
-
   try {
-
     const { email, password } = req.body;
-    if (!email) {
+
+    // Validate input
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide EMAIL'
-      })
-    }
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide PASSWORD'
-      })
+        message: 'Please provide email and password'
+      });
     }
 
+    // Fetch user including password
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
     }
 
+    // Compare passwords
     const isMatch = await user.matchPassword(password);
 
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+
+      // Failed login alert
+      if (user.loginAlerts) {
+        const html = loadTemplate('loginAlert', {
+          name: user.name,
+          status: 'Failed',
+          success: false,
+          time: new Date().toLocaleString(),
+          location: 'Unknown',
+          ip: req.ip || 'Unknown',
+          resetUrl: `${process.env.CLIENT_URL}/forgot-password`
+        });
+
+        await sendEmail({
+          email: user.email,
+          subject: '⚠️ Failed Login Attempt',
+          html
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
     }
 
     const token = generateToken(user._id);
 
-    res.status(200).json
-      ({
+    // Successful login alert
+    if (user.loginAlerts) {
+      const html = loadTemplate('loginAlert', {
+        name: user.name,
+        status: 'Successful',
         success: true,
-        message: 'Login successful',
-        token,
-        user: { id: user._id, email: user.email }
-      })
+        time: new Date().toLocaleString(),
+        location: 'Unknown',
+        ip: req.ip || 'Unknown'
+      });
 
+      await sendEmail({
+        email: user.email,
+        subject: '✅ Successful Login',
+        html
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      }
+    });
 
   } catch (error) {
     console.error('Login Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error during login',
-      error: error.message
+      message: 'Server error during login'
     });
   }
-}
+};
 
-//******* GETME***********
-//Middleware identifies the user once and attaches them to req.user,
-//  so all protected routes know who is logged in without repeating token checks.
 
-//Token → ID card
-//Middleware → Security guard
-//req.user → Name written on visitor badge
-//getMe → Receptionist checking the badge
-
-export const getMe = async (req, res) => {
-
+// ================= FORGOT PASSWORD =================
+//
+// Generates reset token
+// Emails reset link
+//
+export const forgotPassword = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    res.status(200).json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        createdAt: user.createdAt
-      }
-    });
-  } catch (error) {
-    console.error('GetMe Error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
+    const user = await User.findOne({ email: req.body.email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No user found with that email'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = user.getResetPasswordToken();
+    await user.save({ validateBeforeSave: false });
+
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+
+    const html = loadTemplate('resetPassword', {
+      name: user.name,
+      resetUrl
     });
 
-  }
-}
-
-
-// ***** UPDATE_DETAILS*******
-//Used by a logged-in user to update name or email
-//Route is protected (token required)
-//Only fields provided by user are updated
-//Prevents overwriting existing data with empty values
-//Uses user ID from req.user
-//Ensures users can update only their own data
-//Protects against changing another user’s information
-
-export const updateDetails = async (req, res) => {
-  try {
-
-    const { name, email } = req.body;
-    const fieldsToUpdate = {};
-    if (name) fieldsToUpdate.name = name;
-    if (email) fieldsToUpdate.email = email;
-    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
-      new: true,
-      runValidators: true
-    })
+    await sendEmail({
+      email: user.email,
+      subject: '🔑 Password Reset Request',
+      html
+    });
 
     res.status(200).json({
       success: true,
-      message: 'User details updated successfully',
-      user: { id: user._id, name: user.name, email: user.email }
-    })
+      message: 'Password reset email sent'
+    });
+
   } catch (error) {
+    console.error('Forgot Password Error:', error);
     res.status(500).json({
       success: false,
-      error: error.message,
       message: 'Server error'
-    })
+    });
   }
-}
+};
 
 
-// ******* UPDATE_PASSWORD *******
-//Password update requires current password, verifies it, saves new password securely, and issues a new token for security.
-
-//Route is protected (user must be logged in)
-//User must provide current password
-//Prevents unauthorized password changes
-//Server compares current password with hashed password in DB
-//Password change allowed only if passwords match
-//New password is hashed and saved
-//A new JWT token is generated
-//Old tokens become unsafe → fresh secure access
-
-
-export const updatePassword = async (req, res) => {
+// ================= RESET PASSWORD =================
+//
+// Verifies token
+// Updates password
+//
+export const resetPassword = async (req, res) => {
   try {
+    // Hash token from URL
+    const resetPasswordToken = crypto
+      .createHash('sha256')
+      .update(req.params.resettoken)
+      .digest('hex');
 
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
+    // Find valid token
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide current and new password'
-      })
+        message: 'Invalid or expired token'
+      });
     }
 
-    const user = await User.findById(req.user.id).select('+password');
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-
-    const isMatch = await user.matchPassword(currentPassword);
-
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
-    }
-    user.password = newPassword;
+    // Set new password
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
     await user.save();
+
+    // Confirmation email
+    const html = `
+      <h2>Password Reset Successful</h2>
+      <p>Hi ${user.name},</p>
+      <p>Your password has been successfully reset.</p>
+    `;
+
+    await sendEmail({
+      email: user.email,
+      subject: '✅ Password Reset Successful',
+      html
+    });
 
     const token = generateToken(user._id);
 
     res.status(200).json({
       success: true,
-      message: 'Password updated successfully',
+      message: 'Password reset successful',
       token
-    })
+    });
 
   } catch (error) {
-    console.log(error)
+    console.error('Reset Password Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
-    })
-
+      message: 'Server error'
+    });
   }
-}
+};

@@ -1,180 +1,98 @@
-// ======================= IMPORTS =======================
-// React hooks needed for context and state management
-import React, {
-  useContext,     // used to consume context
-  createContext,  // used to create context
-  useState,       // used to store user, token, loading
-  useEffect       // used to run code when component loads
-} from 'react'
+// client/src/context/AuthContext.jsx
 
-// Axios is used to communicate with backend APIs
-import axios from "axios"
+import { createContext, useState, useEffect, useContext } from 'react';
+import api from '../api/axios';
 
+export const AuthContext = createContext();
 
-// ======================= CREATE CONTEXT =======================
-// AuthContext will store auth-related data (user, token, functions)
-// This avoids prop-drilling (passing props again and again)
-const AuthContext = createContext();
-
-
-// ======================= CUSTOM HOOK =======================
-// This hook allows us to access AuthContext easily in any component
-// Example usage: const { user, login, logout } = useAuth();
-export const useAuth = () => {
-    const context = useContext(AuthContext)
-
-    // Safety check: ensures hook is used inside AuthProvider
-    if (!context) {
-        throw new Error('useAuth must be used within an AuthProvider')
-    }
-
-    return context;
-}
-
-
-// ======================= AUTH PROVIDER =======================
-// This component wraps the app and provides auth data to all children
 export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-    // Stores logged-in user details
-    const [user, setUser] = useState(null);
+  useEffect(() => {
+    checkAuth();
+  }, []);
 
-    // Used to show loading spinner while checking auth
-    const [loading, setLoading] = useState(true);
+  const checkAuth = () => {
+    try {
+      const token = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
 
-    // Stores JWT token (initially fetched from localStorage)
-    const [token, setToken] = useState(localStorage.getItem('token'));
+      if (token && storedUser) {
+        setUser(JSON.parse(storedUser));
+        setIsAuthenticated(true);
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const register = async (userData) => {
+    try {
+      const response = await api.post('/auth/register', userData);
+      
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      
+      setUser(response.data.user);
+      setIsAuthenticated(true);
+      
+      return { success: true, data: response.data };
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Registration failed' 
+      };
+    }
+  };
 
-    // ======================= LOAD USER ON PAGE REFRESH =======================
-    // This runs ONCE when app loads
-    // Purpose: keep user logged in even after refresh
-    useEffect(() => {
+  const login = async (credentials) => {
+    try {
+      const response = await api.post('/auth/login', credentials);
+      
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      
+      setUser(response.data.user);
+      setIsAuthenticated(true);
+      
+      return { success: true, data: response.data };
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Login failed' 
+      };
+    }
+  };
 
-        const loadUser = async () => {
-            // Get token from browser storage
-            const storedToken = localStorage.getItem('token');
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setIsAuthenticated(false);
+  };
 
-            // If token exists, verify it with backend
-            if (storedToken) {
-                try {
-                    // Send token to backend to get user details
-                    const response = await axios.get('/auth/me', {
-                        headers: {
-                            Authorization: `Bearer ${storedToken}` // JWT token
-                        }
-                    });
+  const value = {
+    user,
+    isAuthenticated,
+    loading,
+    register,
+    login,
+    logout,
+  };
 
-                    // If token is valid, update state
-                    if (response.data.success) {
-                        setUser(response.data.user); // store user info
-                        setToken(storedToken);       // store token in state
-                    }
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
 
-                } catch (error) {
-                    // Token is invalid or expired
-                    console.error('Failed to load user:', error);
-
-                    // Clear invalid token
-                    localStorage.removeItem('token');
-                    setToken(null);
-                }
-            }
-
-            // Auth check completed
-            setLoading(false);
-        }
-
-        loadUser();
-    }, []); // Empty dependency array → runs only once
-
-
-    // ======================= REGISTER FUNCTION =======================
-    // Sends new user data to backend
-    const register = async (username, email, password) => {
-        try {
-            const response = await axios.post('/auth/register', {
-                username,
-                email,
-                password
-            });
-
-            // If registration successful
-            if (response.data.success) {
-                const { token, user } = response.data;
-
-                // Save token in localStorage (persistent login)
-                localStorage.setItem('token', token);
-
-                // Update state
-                setToken(token);
-                setUser(user);
-            }
-        } catch (error) {
-            // Pass backend error message to UI
-            throw new Error(
-              error.response?.data?.message || 'Registration failed'
-            );
-        }
-    };
-
-
-    // ======================= LOGIN FUNCTION =======================
-    // Authenticates user and stores token
-    const login = async (email, password) => {
-        try {
-            const response = await axios.post('/auth/login', {
-                email,
-                password
-            });
-
-            if (response.data.success) {
-                const { token, user } = response.data;
-
-                // Store token for future requests
-                localStorage.setItem('token', token);
-
-                // Update auth state
-                setToken(token);
-                setUser(user);
-            }
-        } catch (error) {
-            throw new Error(
-              error.response?.data?.message || 'Login failed'
-            );
-        }
-    };
-
-
-    // ======================= LOGOUT FUNCTION =======================
-    // Clears auth data and logs user out
-    const logout = () => {
-        localStorage.removeItem('token'); // remove stored token
-        setToken(null);                   // clear token state
-        setUser(null);                    // clear user state
-    };
-
-
-    // ======================= CONTEXT VALUE =======================
-    // All data & functions that will be accessible globally
-    const value = {
-        user,                // logged-in user info
-        token,               // JWT token
-        loading,             // loading status
-        login,               // login function
-        register,            // register function
-        logout,              // logout function
-        isAuthenticated: !!user && !!token // boolean auth check
-    };
-
-
-    // ======================= PROVIDE CONTEXT =======================
-    // Makes auth data available to all child components
-    return (
-      <AuthContext.Provider value={value}>
-        {children}
-      </AuthContext.Provider>
-    );
-}
-
-export default AuthContext;
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};

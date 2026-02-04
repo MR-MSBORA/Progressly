@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!-- 
+  Declares the document type as HTML5.
+  This helps email clients and browsers render the email correctly.
+-->
+<html>
+<head>
+  <!-- 
+    Style block for email styling.
+    Since many email clients do not support external CSS files,
+    styles are written directly inside the <style> tag.
+  -->
+  <style>
+    /* Global body styling */
+    body {
+      font-family: Arial, sans-serif; /* Safe font for email clients */
+      line-height: 1.6;               /* Improves text readability */
+      color: #333;                    /* Dark gray text color */
+    }
+
+    /* Main container that centers the email */
+    .container {
+      max-width: 600px;               /* Standard email width */
+      margin: 0 auto;                 /* Center align horizontally */
+      padding: 20px;
+    }
+
+    /* Top header section */
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;                   /* White text for contrast */
+      padding: 30px;
+      text-align: center;
+      border-radius: 10px 10px 0 0;   /* Rounded top corners */
+    }
+
+    /* Main email content area */
+    .content {
+      background: #f9f9f9;            /* Light background */
+      padding: 30px;
+      border-radius: 0 0 10px 10px;   /* Rounded bottom corners */
+    }
+
+    /* Call-to-action button */
+    .button {
+      display: inline-block;          /* Makes link behave like a button */
+      padding: 12px 30px;
+      background: #667eea;            /* Brand color */
+      color: white;
+      text-decoration: none;          /* Removes underline */
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+
+    /* Footer section styling */
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      color: #666;                    /* Lighter text */
+      font-size: 12px;                /* Smaller footer text */
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Main wrapper -->
+  <div class="container">
+
+    <!-- Header section with brand name -->
+    <div class="header">
+      <h1>⚡ Welcome to ProgressTrack!</h1>
+    </div>
+
+    <!-- Main content section -->
+    <div class="content">
+
+      <!-- Personalized greeting
+           {{name}} will be replaced dynamically by backend -->
+      <h2>Hi {{name}},</h2>
+
+      <!-- Welcome message -->
+      <p>
+        Thank you for joining ProgressTrack! We're excited to help you
+        track your progress and achieve your goals.
+      </p>
+
+      <!-- Section title -->
+      <h3>Get Started:</h3>
+
+      <!-- Feature list -->
+      <ul>
+        <li>📝 Create your first daily task</li>
+        <li>🎯 Set monthly goals</li>
+        <li>📚 Track skills you're learning</li>
+        <li>📊 View your progress dashboard</li>
+      </ul>
+
+      <!-- Call-to-action button
+           {{dashboardUrl}} is injected from backend -->
+      <a href="{{dashboardUrl}}" class="button">
+        Go to Dashboard
+      </a>
+
+      <!-- Support message -->
+      <p>
+        If you have any questions, feel free to reply to this email.
+      </p>
+
+      <!-- Closing message -->
+      <p>
+        Happy tracking!<br>
+        The ProgressTrack Team
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>© 2026 ProgressTrack. All rights reserved.</p>
+    </div>
+
+  </div>
+</body>
+</html>
