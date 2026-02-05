@@ -42,7 +42,7 @@ ProgressTrack solves this by providing **visual feedback loops** that make progr
 
 ### Frontend
 - **React 18** - UI library
-- **TypeScript** - Type safety
+- **JavaScript**
 - **Tailwind CSS** - Styling
 - **Recharts** - Data visualization
 - **Lucide React** - Icons
